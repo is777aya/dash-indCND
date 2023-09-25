@@ -1,0 +1,218 @@
+import dash
+from dash import dcc
+from dash import html
+import plotly.express as px
+import pandas as pd
+from dash.dependencies import Input, Output, State
+import base64
+import plotly.graph_objects as go
+import pandas as pd
+import dash_leaflet as dl
+import numpy as np
+import json
+import geopandas as gpd
+from shapely.geometry import Point
+from shapely.geometry.polygon import Polygon
+
+terr2 =pd.read_excel('indicadores.xlsx')
+region = terr2['DEPARTAMENTO'].unique()
+
+external_stylesheets = [
+    {'src': 'https://codepen.io/chriddyp/pen/bWLwgP.css'},
+    {'src':'assets/s1.css'},
+    {'src':'assets/style2.css'},
+]
+# external JavaScript files
+external_scripts = [
+    {'src': 'https://cdn.polyfill.io/v2/polyfill.min.js'},
+    {'src': 'https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js'}
+]
+
+app = dash.Dash(__name__, external_scripts=external_scripts, external_stylesheets=external_stylesheets)
+
+app.layout = html.Div(children=[
+    html.Div([
+        html.Div([
+             html.Img(src=app.get_asset_url('geobolivia.png'),
+                     style={
+                         "height": "70px",
+                         "width": "auto",
+                     },)
+        ], className=" one-half column",),
+        html.Div([
+            
+        ], className=" one-half column"),
+
+        html.Div([
+            html.Img(src=app.get_asset_url('prorural.png'),
+                     style={
+                         "height": "70px",
+                         "width": "auto",
+                     },)
+
+        ], className=" one-half column"),
+
+    ], className="row flex-display",),
+    html.Div([
+        html.Div([
+            html.Div([
+                html.H3('INDICADORES DE CUMPLIMIENTO - CND', 
+                style = { 'color': 'black','textAlign': 'center'}),
+            ]),
+            
+        ], className = "six column")
+
+    ], id = "header", className = "row flex-display"),
+    html.Div([
+        html.Div([
+            html.P('Seleccione Departamento:', className = 'fix_label', style = {'color': 'white'}),
+            dcc.Dropdown(id = 'w_departamentos',
+                         multi = False,
+                         clearable = True,
+                         disabled = False,
+                         style = {'display': True},
+                         value = 'La Paz',
+                         placeholder = 'Seleccione Departamento',
+                         options = [{'label': c, 'value': c}
+                                    for c in region], className = 'dcc_compon'),
+        ], className="create_container one-half column",),
+       
+        html.Div([
+         html.P('Seleccione Municipio:', className = 'fix_label', style = {'color': 'white'}),
+            dcc.Dropdown(id = 'w_municipios',
+                         multi = False,
+                         clearable = True,
+                         disabled = False,
+                         style = {'display': True},
+                         placeholder = 'Seleccione Municipio',
+                         options = [], className = 'dcc_compon'),
+
+        ], className="create_container one-half column"),
+        html.Div([
+            html.P('Seleccione Gestion:', className = 'fix_label', style = {'color': 'white'}),
+            dcc.Dropdown(id = 'w_gestion',
+                         multi = False,
+                         clearable = True,
+                         disabled = False,
+                         style = {'display': True},
+                         value = '2019',
+                         placeholder = 'Seleccione gestion',
+                         options = [], className = 'dcc_compon'),
+        ], className="create_container one-half column",),
+    ], className="row flex-display",),
+    html.Div([        
+        html.Div([
+            dcc.Graph(id='bar_line_1',
+                config = {'displayModeBar': False},
+            ),
+        ], className = "create_container six columns"),    
+        html.Div([
+            dcc.Graph(id='bar_line_2',
+                config = {'displayModeBar': False},
+            ),
+        ], className = "create_container six columns"),
+    ], className = "row flex-display"),
+
+    html.Div([        
+        
+       html.Div([              
+                 html.Iframe(src="http://localhost:8089/bosques/#/viewer/openlayers/14",
+                style={"height": "450px", "width": "100%"}),
+        ], className = "create_container columns"),
+    ], className = "row flex-display"),
+
+])
+
+@app.callback(
+    Output('w_municipios', 'options'),
+    Input('w_departamentos', 'value'))
+def get_municipios_options(w_departamentos):
+    terr4 = terr2[terr2['DEPARTAMENTO'] == w_departamentos]
+    return [{'label': i, 'value': i} for i in terr4['MUNICIPIO'].unique()]
+
+@app.callback(
+    Output('w_gestion', 'options'),
+    Input('w_municipios', 'value'))
+def get_gestiones_options(w_municipios):
+    terr4 = terr2[terr2['MUNICIPIO'] == w_municipios]
+    return [{'label': i, 'value': i} for i in terr4['GESTION'].unique()]
+@app.callback(
+    Output('w_departamentos', 'value'),
+    Input('w_departamentos', 'options'))
+def get_departamentos_value(w_departamentos):
+    return [k['value'] for k in w_departamentos][0]
+@app.callback(
+    Output('w_municipios', 'value'),
+    Input('w_municipios', 'options'))
+def get_municipio_value(w_municipios):
+    return [k['value'] for k in w_municipios][0]
+@app.callback(
+    Output('w_gestion', 'value'),
+    Input('w_gestion', 'options'))
+def get_gestion_value(w_gestion):
+    return [k['value'] for k in w_gestion][0]
+
+@app.callback(Output('bar_line_1', 'figure'),
+              [Input('w_departamentos', 'value')],
+              [Input('w_municipios', 'value')],
+              [Input('w_gestion', 'value')])
+def update_graph(w_departamentos, w_municipios,w_gestion):
+    terr6 = terr2[(terr2['DEPARTAMENTO'] == w_departamentos) & (terr2['MUNICIPIO'] == w_municipios)  & (terr2['GESTION'] == w_gestion)  & (terr2['SECTOR'] == 'Agua') ]
+
+    names = terr6['TIPO'].tolist()
+    metas = list(np.array(terr6['PORCENTAJE'].tolist()) * 100)
+    linea_base = list(np.array(terr6['LINEA_BASE'].tolist()) * 100)
+    return {
+        'data': [
+            go.Scatterpolar(
+            r=linea_base,
+            theta=names,
+            fill='toself',
+            name='Linea Base Referencial'
+            ),
+             go.Scatterpolar(
+            r=metas,
+            theta=names,
+            fill='toself',
+            name='Indicador Agua'
+            ),
+        ],
+        'layout':go.Layout(
+            title=go.layout.Title(text='Agua Indicador'),
+            polar={'radialaxis': {'visible': True}},
+            showlegend=True
+        )
+    }
+@app.callback(Output('bar_line_2', 'figure'),
+              [Input('w_departamentos', 'value')],
+              [Input('w_municipios', 'value')],
+              [Input('w_gestion', 'value')])
+def update_graph(w_departamentos, w_municipios,w_gestion):
+    terr6 = terr2[(terr2['DEPARTAMENTO'] == w_departamentos) & (terr2['MUNICIPIO'] == w_municipios)  & (terr2['GESTION'] == w_gestion)  & (terr2['SECTOR'] == 'Bosque') ]
+
+    names = terr6['TIPO'].tolist()
+    metas = list(np.array(terr6['PORCENTAJE'].tolist()) * 100)
+    linea_base = list(np.array(terr6['LINEA_BASE'].tolist()) * 100)
+    return {
+        'data': [ 
+            go.Scatterpolar(
+            r=linea_base,
+            theta=names,
+            fill='toself',
+            name='Linea Base Referencial'
+            ),
+             go.Scatterpolar(
+            r=metas,
+            theta=names,
+            fill='toself',
+            name='Indicador Bosque'
+            ),
+        ],
+        'layout':go.Layout(
+            title=go.layout.Title(text='Bosque Indicador'),
+            polar={'radialaxis': {'visible': True}},
+            showlegend=True
+        )
+    }
+if __name__ == '__main__':
+    app.run_server(debug=True)
